@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minecraftmicroservice
+  labels:
+    app: minecraftmicroservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minecraftmicroservice
+  template:
+    metadata:
+      labels:
+        app: minecraftmicroservice
+    spec:
+      containers:
+      - name: minecraftmicroservice-container
+        image: federicoand98/minecraft-microservice:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        env:
+          - name: ASPNETCORE_ENVIRONMENT
+            value: Development
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "0.1"
+          limits:
+            memory: "128Mi"
+            cpu: "0.3"
