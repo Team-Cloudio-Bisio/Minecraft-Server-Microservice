@@ -8,98 +8,78 @@ namespace MinecraftServerMicroservice.Controllers;
 [Route("[controller]")]
 public class ServerManagerController : ControllerBase
 {
-    private ServerManager _serverManager = new ServerManager();
+    private ServerManager _serverManager;
+
+    public ServerManagerController()
+    {
+        _serverManager = new ServerManager();
+    }
 
     // Get async request (the creation requires time)
     [HttpGet("createServer", Name = "CreateServer")]
-    public async Task<string> CreateServer()
+    public async Task<string> CreateServer(
+        string serverName = "",
+        string minecraftVersion = "",
+        string serverOperators = "",
+        string serverWorldURL = "",
+        bool serverEnableStatus = true,
+        string serverMOTD = "Server Powered by Azure & Kubernetes",
+        string serverDifficulty = "easy",
+        string serverGameMode = "survival",
+        int serverMaxPlayers = 20,
+        bool serverOnlineMode = true,
+        int serverPlayerIdleTimeout = 0,
+        bool serverEnableWhitelist = false,
+        string serverWhitelist = "")
     {
-        _serverManager.CreateServer("serverResourceGroup");
+        var res = await _serverManager.CreateServer(
+            serverName: serverName,
+            minecraftVersion: minecraftVersion,
+            serverOperators: serverOperators,
+            serverWorldURL: serverWorldURL,
+            serverEnableStatus: serverEnableStatus,
+            serverMOTD: serverMOTD,
+            serverDifficulty: serverDifficulty,
+            serverGameMode: serverGameMode,
+            serverMaxPlayers: serverMaxPlayers,
+            serverOnlineMode: serverOnlineMode,
+            serverPlayerIdleTimeout: serverPlayerIdleTimeout,
+            serverEnableWhitelist: serverEnableWhitelist,
+            serverWhitelist: serverWhitelist
+        );
 
-        // e.g. (return JSON of the created resources)
-        return "{" +
-                    "\"properties\": {" +
-                        "\"sku\": \"Standard\"," +
-                        "\"provisioningState\": \"Succeeded\"," +
-                        "\"provisioningTimeoutInSeconds\": 1800," +
-                        "\"isCustomProvisioningTimeout\": false," +
-                        "\"containers\": [" +
-                            "{" +
-                                "\"name\": \"minecraft-test-prova-aci\"," +
-                                "\"properties\": {" +
-                                    "\"image\": \"itzg/minecraft-server:latest\"," +
-                                    "\"ports\": [" +
-                                        "{" +
-                                            "\"protocol\": \"TCP\"," +
-                                            "\"port\": 25565" +
-                                        "}" +
-                                    "]," +
-                                    "\"environmentVariables\": [" +
-                                        "{" +
-                                            "\"name\": \"VERSION\"," +
-                                            "\"value\": \"1.20.1\"" +
-                                        "}," +
-                                    "]," +
-                                    "\"instanceView\": {" +
-                                    // [...]
-                                    "}," +
-                                    "\"resources\": {" +
-                                        "\"requests\": {" +
-                                            "\"memoryInGB\": 2,\"cpu\": 1" +
-                                        "}" +
-                                    "}," +
-                                    "\"volumeMounts\": [" +
-                                        "{" +
-                                            "\"name\": \"azurefile\"," +
-                                            "\"mountPath\": \"/data\"" +
-                                        "}" +
-                                    "]" +
-                                "}" +
-                            "}" +
-                        "]" +
-                    // [...]
-                    "}" +
-                "}" +
-            "}";
-    }
-
-    [HttpGet("startServer", Name = "StartServer")]
-    public string StartServer()
-    {
-        _serverManager.StartServer("");
-
-        return "Server started";
-    }
-
-    [HttpGet("stopServer", Name = "StopServer")]
-    public string StopServer()
-    {
-        _serverManager.StopServer("");
-
-        return "Server stopped";
+        return "OK: " + res;
     }
 
     [HttpGet("deleteServer", Name = "DeleteServer")]
-    public string DeleteServer()
+    public async Task<string> DeleteServer(string serverName)
     {
-        _serverManager.DeleteServer("");
-
-        return "Server deleted";
+        return await _serverManager.DeleteServer(serverName); ;
     }
 
-    [HttpGet("pingServer", Name = "PingServer")]
+    [HttpGet("startServer", Name = "StartServer")]
+    public async Task<string> StartServer(string serverName)
+    {
+        return await _serverManager.StartServer(serverName);
+    }
+
+    [HttpGet("stopServer", Name = "StopServer")]
+    public async Task<string> StopServer(string serverName)
+    {
+        return await _serverManager.StopServer(serverName);
+    }
+
+    /*[HttpGet("pingServer", Name = "PingServer")]
     public bool PingServer()
     {
         _serverManager.PingServer("");
 
         return Random.Shared.NextDouble() > 0.5; // TEST: random boolean
-    }
+    }*/
 
     [HttpGet("sendCommand", Name = "SendCommand")]
-    public string SendCommand(string command)
+    public string SendCommand(string serverName, string command)
     {
-        _serverManager.SendCommand(command);
-
-        return "Sent command: " + command;
+        return _serverManager.SendCommand(serverName, command);
     }
 }
