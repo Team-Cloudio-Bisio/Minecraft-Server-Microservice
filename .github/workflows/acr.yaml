@@ -25,4 +25,6 @@ jobs:
         with:
           push: true
           tags: ${{ secrets.ACR_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          secrets : |
+            "KUBE_CONFIG=${{ secrets.KUBE_CONFIG }}"
 
