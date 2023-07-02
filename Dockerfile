@@ -20,7 +20,7 @@ COPY --from=publish /app/publish .
 
 RUN mkdir ../root/.kube
 RUN touch config
-RUN --mount=type=secret, id=KUBE_CONFIG \
+RUN --mount=type=secret,id=KUBE_CONFIG \
 	cat /run/secrets/KUBE_CONFIG > config
 RUN copy config ../root/.kube/
 
