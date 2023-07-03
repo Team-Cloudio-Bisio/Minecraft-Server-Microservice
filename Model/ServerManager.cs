@@ -1,5 +1,6 @@
 ﻿using k8s;
 using k8s.Models;
+using System;
 using System.Diagnostics;
 
 namespace MinecraftServerMicroservice.Model
@@ -28,7 +29,7 @@ namespace MinecraftServerMicroservice.Model
                 //Console.WriteLine($"Error while initializing the ServerManager: {ex.Message}");
             }
             System.Diagnostics.Debug.WriteLine("ServerManager Setup");
-
+            
             // get a list of the current pods the user has access to?
         }
 
@@ -47,9 +48,23 @@ namespace MinecraftServerMicroservice.Model
         }
 
         /// <summary>
-        /// Method <c>FullCreateServer</c> creates a minecraft server.
+        /// Method <c>FullCreateServer</c> creates a Minecraft Server and pushes it
+        /// to the Azure cluster. The parameters are used to configure the server.
         /// </summary>
-        ///
+        /// <param name="serverName"></param>
+        /// <param name="minecraftVersion"></param>
+        /// <param name="serverOperators"></param>
+        /// <param name="serverWorldURL"></param>
+        /// <param name="serverEnableStatus"></param>
+        /// <param name="serverMOTD"></param>
+        /// <param name="serverDifficulty"></param>
+        /// <param name="serverGameMode"></param>
+        /// <param name="serverMaxPlayers"></param>
+        /// <param name="serverOnlineMode"></param>
+        /// <param name="serverPlayerIdleTimeout"></param>
+        /// <param name="serverEnableWhitelist"></param>
+        /// <param name="serverWhitelist"></param>
+        /// <returns>The server's IP address.</returns>
         public async Task<string> FullCreateServer(
             string serverName,
             string minecraftVersion = "",
@@ -393,159 +408,84 @@ namespace MinecraftServerMicroservice.Model
             return stopInfo;
         }
 
-        public async Task<string> PingServer(string serverName)
+        
+
+        /// <summary>
+        /// Method <c>SendCommandFireAndForget</c> sends a command to the minecraft server.
+        /// </summary>
+        /// <param name="serverName"></param>
+        /// <param name="command"></param>
+        /// <returns>A string indicating if the command was correctly sent.</returns>
+        public async Task<string> SendCommandFireAndForget(string serverName, string command)
         {
-            string result = "";
-            V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
-            // Check status?
+            // Check if the server exists
+            if (!(await CheckIfServerExist(serverName)))
+                return "Not found";
 
-            // Obtain the IP/DNS and ping it?
+            // Fire and forget command (mc-send-to-console doesn't provide output)
+            System.Diagnostics.Debug.WriteLine($"Command: kubectl exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- mc-send-to-console {command}");
+            ExecCommand(serverName, $"rcon-cli {command}");
 
-            // Check if the server is online
-
-            if (deployment?.Status != null)
-            {
-                result = deployment.Status.ToString();
-            }
-            else
-                result = $"Server '{serverName}' not found.";
-
-            return result;
+            return $"Sent command '{command}'.";
         }
 
-        public async Task<string> GetServerInfo(string serverName)
-        {
-            V1Service service = await _client.ReadNamespacedServiceAsync(serverName, MC_SERVER_NAMESPACE);
-            Console.WriteLine($"Service created with name: {service.Metadata.Name}");
-
-            string hostname = "-", extIP = "-";
-            if (service.Status.LoadBalancer.Ingress != null && service.Status.LoadBalancer.Ingress.Count > 0)
-            {
-                extIP = service.Status.LoadBalancer.Ingress[0].Ip;
-                hostname = service.Status.LoadBalancer.Ingress[0].Hostname;
-            }
-
-            var serverInfo = $"External IP: {extIP}\nHostname: {hostname}";
-            return serverInfo;
-        }
-
-        public async Task<string> SendCommand(string serverName, string command)
-        {
-            try
-            {
-                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
-            }
-            catch (k8s.Autorest.HttpOperationException e)
-            {
-                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
-                {
-                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
-                    return $"Server '{serverName}' not found.";
-                }
-            }
-
-            var processStartInfo = new ProcessStartInfo()
-            {
-                FileName = "kubectl",
-                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- mc-send-to-console {command}",
-                RedirectStandardOutput = true,
-                UseShellExecute = false
-            };
-
-            var process = new Process()
-            {
-                StartInfo = processStartInfo
-            };
-
-            process.Start();
-            process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
-
-            return "Command sent.";
-        }
-
-        // Example: /op mikyll98
+        /// <summary>
+        /// Method <c>SendCommandInteractive</c> sends a command to the minecraft server and
+        /// returns the output.
+        /// </summary>
+        /// <param name="serverName"></param>
+        /// <param name="command"></param>
+        /// <returns>A string containing the command output.</returns>
         public async Task<string> SendCommandInteractive(string serverName, string command)
         {
-            try
-            {
-                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
-            }
-            catch (k8s.Autorest.HttpOperationException e)
-            {
-                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
-                {
-                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
-                    return $"Server '{serverName}' not found.";
-                }
-            }
+            // Check if the server exists
+            if (!(await CheckIfServerExist(serverName)))
+                return "Not found";
 
-            var processStartInfo = new ProcessStartInfo()
-            {
-                FileName = "kubectl",
-                //Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- mc-send-to-console {command}",
-                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- rcon-cli {command}", // rcon-cli provides the command output
-                RedirectStandardOutput = true,
-                UseShellExecute = false
-            };
-
-            var process = new Process()
-            {
-                StartInfo = processStartInfo
-            };
-
-            process.Start();
-
-            var commandOutput = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
+            // Send command and retrieve the output (rcon-cli provides output)
+            System.Diagnostics.Debug.WriteLine($"Command: kubectl exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- rcon-cli {command}");
+            var commandOutput = ExecCommand(serverName, $"rcon-cli {command}");
+            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
 
             return commandOutput;
         }
 
+        /// <summary>
+        /// Method <c>UpdateProperty</c> changes the value of a property in setting.properties file.
+        /// <b>NB: currently doesn't work.</b>
+        /// </summary>
+        /// <param name="serverName"></param>
+        /// <param name="property"></param>
+        /// <param name="newValue"></param>
+        /// <returns>The command output or an error.</returns>
         public async Task<string> UpdateProperty(string serverName, string property, string newValue)
         {
-            try
-            {
-                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
-            }
-            catch (k8s.Autorest.HttpOperationException e)
-            {
-                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
-                {
-                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
-                    return "Not found";
-                }
-            }
+            // Check if the server exists
+            if (!(await CheckIfServerExist(serverName)))
+                return "Not found";
 
             // Allow only valid properties
-            if (property != "gamemode" /*&&*/)
+            if (property != "gamemode")
                 return "Invalid property";
 
-            // Remove content after newline
-            int newlineIndex = newValue.IndexOf('\n');
-            newValue = newlineIndex >= 0 ? newValue.Substring(0, newlineIndex) : newValue;
+            string command = "", commandOutput = "";
 
-            var processStartInfo = new ProcessStartInfo()
-            {
-                FileName = "kubectl",
-                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- bash -c \"ls && cat\"",
-                //Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- cat server.properties | grep \"^${property}\"; N=$(cat server.properties | grep -n \"^{property}=\" | cut -f1 -d:); echo $N; sed -i \"${{N}}s/.*/{property}=creative/\" server.properties",
-                RedirectStandardOutput = true,
-                UseShellExecute = false
-            };
+            // Test
+            command = "touch test.txt";
+            System.Diagnostics.Debug.WriteLine($"Command: {command}");
+            commandOutput += ExecCommand(serverName, command);
+            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
 
-            var process = new Process()
-            {
-                StartInfo = processStartInfo
-            };
+            command = $"sed -i 's/^{property}=.*/{property}={newValue}/' server.properties";
+            System.Diagnostics.Debug.WriteLine($"Command: kubectl exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- {command}");
+            commandOutput += ExecCommand(serverName, command);
+            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
 
-            process.Start();
-            
-
-            var commandOutput = process.StandardOutput.ReadToEnd();
-            System.Diagnostics.Debug.WriteLine(commandOutput);
-
-            process.WaitForExit();
+            // Test: print content of properties
+            command = "cat server.properties";
+            System.Diagnostics.Debug.WriteLine($"Command: {command}");
+            commandOutput += ExecCommand(serverName, command);
+            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
 
             return commandOutput;
         }
@@ -571,6 +511,89 @@ namespace MinecraftServerMicroservice.Model
             serverList.Add(new ServerInfo() { serverName = "server3", deployment = ServerStatus.waiting, connectedPlayers = 0, maxPlayers = 20 });
             
             return serverList;
+        }
+
+        private async Task<bool> CheckIfServerExist(string serverName)
+        {
+            bool result = false;
+
+            // Check if the server exists
+            try
+            {
+                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+                result = true;
+            }
+            catch (k8s.Autorest.HttpOperationException e)
+            {
+                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
+                }
+            }
+
+            return result;
+        }
+
+        private string ExecCommand(string serverName, string command)
+        {
+            var processStartInfo = new ProcessStartInfo()
+            {
+                FileName = "kubectl",
+                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- {command}",
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            var process = new Process()
+            {
+                StartInfo = processStartInfo
+            };
+
+            process.Start();
+
+            var commandOutput = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+
+            return commandOutput;
+        }
+
+
+
+        // ================================================
+        // EXTRAS
+        public async Task<string> PingServer(string serverName)
+        {
+            string result = "";
+            V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+            // Check status?
+
+            // Obtain the IP/DNS and ping it?
+
+            // Check if the server is online
+
+            if (deployment?.Status != null)
+            {
+                result = deployment.Status.ToString();
+            }
+            else
+                result = $"Server '{serverName}' not found.";
+
+            return result;
+        }
+        public async Task<string> GetServerInfo(string serverName)
+        {
+            V1Service service = await _client.ReadNamespacedServiceAsync(serverName, MC_SERVER_NAMESPACE);
+            Console.WriteLine($"Service created with name: {service.Metadata.Name}");
+
+            string hostname = "-", extIP = "-";
+            if (service.Status.LoadBalancer.Ingress != null && service.Status.LoadBalancer.Ingress.Count > 0)
+            {
+                extIP = service.Status.LoadBalancer.Ingress[0].Ip;
+                hostname = service.Status.LoadBalancer.Ingress[0].Hostname;
+            }
+
+            var serverInfo = $"External IP: {extIP}\nHostname: {hostname}";
+            return serverInfo;
         }
     }
 }

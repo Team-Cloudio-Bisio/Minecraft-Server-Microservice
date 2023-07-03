@@ -99,7 +99,7 @@ public class ServerManagerController : ControllerBase
     {
         IActionResult result;
 
-        var output = await _serverManager.SendCommand(serverName, $"/difficulty {difficulty}");
+        var output = await _serverManager.SendCommandInteractive(serverName, $"/difficulty {difficulty}");
         if (!output.Contains("not found"))
             result = StatusCode(200, $"Difficulty set to {difficulty}");
         else
@@ -113,7 +113,7 @@ public class ServerManagerController : ControllerBase
     {
         IActionResult result;
 
-        var output = await _serverManager.SendCommand(serverName, command);
+        var output = await _serverManager.SendCommandInteractive(serverName, command);
         if (!output.Contains("not found")) 
             result = StatusCode(200, $"Command output: '{output}'");
         else
@@ -122,85 +122,17 @@ public class ServerManagerController : ControllerBase
         return result;
     }
 
-
-
-
-
-    // Old version
-
-    // Get async request (the creation requires time)
-    /*[HttpGet("", Name = "CreateServer")]
-    public async Task<string> CreateServer(
-        string serverName,
-        string minecraftVersion = "",
-        string serverOperators = "",
-        string serverWorldURL = "",
-        bool serverEnableStatus = true,
-        string serverMOTD = "Server Powered by Azure & Kubernetes",
-        string serverDifficulty = "easy",
-        string serverGameMode = "survival",
-        int serverMaxPlayers = 20,
-        bool serverOnlineMode = true,
-        int serverPlayerIdleTimeout = 0,
-        bool serverEnableWhitelist = false,
-        string serverWhitelist = "")
+    [HttpGet("{serverName}/updateProperty", Name = "UpdateProperty")]
+    public async Task<IActionResult> UpdateProperty(string serverName, string property, string command)
     {
-        var res = await _serverManager.FullCreateServer(
-            serverName: serverName,
-            minecraftVersion: minecraftVersion,
-            serverOperators: serverOperators,
-            serverWorldURL: serverWorldURL,
-            serverEnableStatus: serverEnableStatus,
-            serverMOTD: serverMOTD,
-            serverDifficulty: serverDifficulty,
-            serverGameMode: serverGameMode,
-            serverMaxPlayers: serverMaxPlayers,
-            serverOnlineMode: serverOnlineMode,
-            serverPlayerIdleTimeout: serverPlayerIdleTimeout,
-            serverEnableWhitelist: serverEnableWhitelist,
-            serverWhitelist: serverWhitelist
-        );
+        IActionResult result;
 
-        return "OK: " + res;
+        var output = await _serverManager.UpdateProperty(serverName, property, command);
+        if (!output.Contains("not found"))
+            result = StatusCode(200, $"Command output: '{output}'");
+        else
+            result = StatusCode(401, $"Command failed. Error: '{output}'");
+
+        return result;
     }
-
-    [HttpDelete("{serverName}/deleteServer", Name = "DeleteServer")]
-    public async Task<string> DeleteServer(string serverName)
-    {
-        return await _serverManager.DeleteServer(serverName); ;
-    }
-
-    [HttpGet("{serverName}/startServer", Name = "StartServer")]
-    public async Task<string> StartServer(string serverName)
-    {
-        return await _serverManager.StartServer(serverName);
-    }
-
-    [HttpGet("{serverName}/stopServer", Name = "StopServer")]
-    public async Task<string> StopServer(string serverName)
-    {
-        return await _serverManager.StopServer(serverName);
-    }
-
-    [HttpPost("{serverName}/setGamemode", Name = "SetGamemode")]
-    public string SetGamemode(string serverName, string command)
-    {
-        // TO-DO
-
-        return _serverManager.SendCommand(serverName, command);
-    }
-
-    [HttpPost("{serverName}/setDifficulty", Name = "SetDifficulty")]
-    public string SetDifficulty(string serverName, string command)
-    {
-        // TO-DO
-
-        return _serverManager.SendCommand(serverName, command);
-    }
-
-    [HttpPost("{serverName}/sendCommand", Name = "SendCommand")]
-    public string SendCommand(string serverName, string command)
-    {
-        return _serverManager.SendCommand(serverName, command);
-    }*/
 }
