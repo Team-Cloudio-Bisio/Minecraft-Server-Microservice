@@ -429,7 +429,6 @@ namespace MinecraftServerMicroservice.Model
             return serverInfo;
         }
 
-        // Example: /op mikyll98
         public async Task<string> SendCommand(string serverName, string command)
         {
             try
@@ -448,8 +447,44 @@ namespace MinecraftServerMicroservice.Model
             var processStartInfo = new ProcessStartInfo()
             {
                 FileName = "kubectl",
-                Arguments = $"exec deployment/{serverName} -- mc-send-to-console {command}",
-                //Arguments = $"exec deployment/{serverName} -- rcon-cli {command}",
+                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- mc-send-to-console {command}",
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            var process = new Process()
+            {
+                StartInfo = processStartInfo
+            };
+
+            process.Start();
+            process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+
+            return "Command sent.";
+        }
+
+        // Example: /op mikyll98
+        public async Task<string> SendCommandInteractive(string serverName, string command)
+        {
+            try
+            {
+                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+            }
+            catch (k8s.Autorest.HttpOperationException e)
+            {
+                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
+                    return $"Server '{serverName}' not found.";
+                }
+            }
+
+            var processStartInfo = new ProcessStartInfo()
+            {
+                FileName = "kubectl",
+                //Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- mc-send-to-console {command}",
+                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- rcon-cli {command}", // rcon-cli provides the command output
                 RedirectStandardOutput = true,
                 UseShellExecute = false
             };
@@ -467,10 +502,8 @@ namespace MinecraftServerMicroservice.Model
             return commandOutput;
         }
 
-        public async Task<bool> UpdateProperty(string serverName, string property, string newValue)
+        public async Task<string> UpdateProperty(string serverName, string property, string newValue)
         {
-            bool result = false;
-
             try
             {
                 V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
@@ -479,14 +512,14 @@ namespace MinecraftServerMicroservice.Model
             {
                 if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
                 {
-                    result = false;
                     System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
+                    return "Not found";
                 }
             }
 
             // Allow only valid properties
             if (property != "gamemode" /*&&*/)
-                return result;
+                return "Invalid property";
 
             // Remove content after newline
             int newlineIndex = newValue.IndexOf('\n');
@@ -495,7 +528,8 @@ namespace MinecraftServerMicroservice.Model
             var processStartInfo = new ProcessStartInfo()
             {
                 FileName = "kubectl",
-                Arguments = $"exec deployment/{serverName} -- cat server.properties | grep \"^${property}\"; N=$(cat server.properties | grep -n \"^{property}=\" | cut -f1 -d:); echo $N; sed -i \"${{N}}s/.*/{property}=creative/\" server.properties",
+                Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- bash -c \"ls && cat\"",
+                //Arguments = $"exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- cat server.properties | grep \"^${property}\"; N=$(cat server.properties | grep -n \"^{property}=\" | cut -f1 -d:); echo $N; sed -i \"${{N}}s/.*/{property}=creative/\" server.properties",
                 RedirectStandardOutput = true,
                 UseShellExecute = false
             };
@@ -513,9 +547,7 @@ namespace MinecraftServerMicroservice.Model
 
             process.WaitForExit();
 
-            result = true;
-
-            return result;
+            return commandOutput;
         }
 
         /// <summary>

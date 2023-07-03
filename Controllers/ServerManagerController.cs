@@ -15,7 +15,7 @@ public class ServerManagerController : ControllerBase
         _serverManager = new ServerManager();
     }
 
-    [HttpPost("", Name = "CreateServer")]
+    [HttpPost("MinecraftServer", Name = "CreateServer")]
     public async Task<Server> CreateServer(Server server)
     {
         // Non funziona
@@ -30,7 +30,7 @@ public class ServerManagerController : ControllerBase
         return await _serverManager.FullCreateServer(server);
     }
 
-    [HttpDelete("{serverName}/deleteServer", Name = "DeleteServer")]
+    [HttpDelete("MinecraftServer", Name = "DeleteServer")]
     public async Task<IActionResult> DeleteServer(string serverName)
     {
         IActionResult result;
@@ -82,10 +82,14 @@ public class ServerManagerController : ControllerBase
     {
         IActionResult result;
 
-        if (await _serverManager.UpdateProperty(serverName, "gamemode", "creative"))
-            result = StatusCode(200, $"Gamemode set to {gamemode}");
-        else
+        string output = await _serverManager.UpdateProperty(serverName, "gamemode", "creative");
+        
+        if (output.ToLower().Contains("not found"))
+            result = StatusCode(404, $"Server named '{serverName}' not found.");
+        else if (output.ToLower().Contains("invalid property"))
             result = StatusCode(401, "Couldn't change gamemode");
+        else
+            result = StatusCode(200, output);
 
         return result;
     }
@@ -109,11 +113,11 @@ public class ServerManagerController : ControllerBase
     {
         IActionResult result;
 
-        var output = await _serverManager.SendCommand(serverName, command));
+        var output = await _serverManager.SendCommand(serverName, command);
         if (!output.Contains("not found")) 
             result = StatusCode(200, $"Command output: '{output}'");
         else
-            result = StatusCode(401, $"Command '{command}' failed: '{output}'");
+            result = StatusCode(401, $"Command failed. Error: '{output}'");
 
         return result;
     }
