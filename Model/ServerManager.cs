@@ -6,7 +6,7 @@ namespace MinecraftServerMicroservice.Model
 {
     public class ServerManager
     {
-        public const string MC_SERVER_NAMESPACE = "default";
+        public const string MC_SERVER_NAMESPACE = "minecraft-servers";
 
         public const string MC_SERVICE_SUFFIX = "-service";
         public const string MC_STORAGE_SUFFIX = "-volume";
@@ -32,14 +32,26 @@ namespace MinecraftServerMicroservice.Model
             // get a list of the current pods the user has access to?
         }
 
+        public async Task<Server> CreateServer(Server server)
+        {
+            System.Diagnostics.Debug.WriteLine("Test 1");
+
+            string ipAddress = await FullCreateServer(server.serverName);
+
+            server.ip = ipAddress;
+            System.Diagnostics.Debug.WriteLine($"Test 2: {ipAddress}");
+
+
+
+            return server;
+        }
+
         /// <summary>
-        /// Method <c>CreateServer</c> creates a minecraft server.
+        /// Method <c>FullCreateServer</c> creates a minecraft server.
         /// </summary>
-        /// <param name='serverName'>
-        /// The univoque name that will be associate to the server.
-        /// </param>
-        public async Task<string> CreateServer(
-            string serverName = "",
+        ///
+        public async Task<string> FullCreateServer(
+            string serverName,
             string minecraftVersion = "",
             string serverOperators = "",
             string serverWorldURL = "",
@@ -262,21 +274,22 @@ namespace MinecraftServerMicroservice.Model
             return runningService.Status.LoadBalancer.Ingress[0].Ip;
         }
 
-        public async Task<string> DeleteServer(string serverName)
+        public async Task<OperationInfo> DeleteServer(string serverName)
         {
-            string deployment = "", service = "", pvc = "", res = "";
-
+            OperationInfo deleteInfo = new OperationInfo();
+            deleteInfo.serverName = serverName;
+            
             // Delete Deployment
             try
             {
                 await _client.DeleteNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
-                deployment = "Deleted";
+                deleteInfo.deployment = "deleted";
             }
             catch (k8s.Autorest.HttpOperationException e)
             {
                 if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
                 {
-                    deployment = $"Not found";
+                    deleteInfo.deployment = "notFound";
                     System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
                 }
             }
@@ -284,13 +297,13 @@ namespace MinecraftServerMicroservice.Model
             try
             {
                 await _client.DeleteNamespacedServiceAsync(serverName + MC_SERVICE_SUFFIX, MC_SERVER_NAMESPACE);
-                service = "Deleted";
+                deleteInfo.service = "deleted";
             }
             catch (k8s.Autorest.HttpOperationException e)
             {
                 if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
                 {
-                    service = $"Not found";
+                    deleteInfo.service = "notFound";
                     System.Diagnostics.Debug.WriteLine($"Service '{serverName}' not found.");
                 }
             }
@@ -298,25 +311,18 @@ namespace MinecraftServerMicroservice.Model
             try
             {
                 await _client.DeleteNamespacedPersistentVolumeClaimAsync(serverName + MC_STORAGE_SUFFIX, MC_SERVER_NAMESPACE);
-                pvc = "Deleted";
+                deleteInfo.storage = "deleted";
             }
             catch (k8s.Autorest.HttpOperationException e)
             {
                 if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
                 {
-                    pvc = $"Not found";
+                    deleteInfo.storage = "notFound";
                     System.Diagnostics.Debug.WriteLine($"PVC '{serverName}' not found.");
                 }
             }
 
-            res = $"{{" +
-                    $"\"ServerName\" = \"{serverName}\"," +
-                    $"\"Deployment\" = \"{deployment}\"," +
-                    $"\"Service\" = \"{service}\"," +
-                    $"\"Storage\" = \"{pvc}\"," +
-                  $"}}";
-
-            return res;
+            return deleteInfo;
         }
 
         private async Task WaitForServiceReady(string serviceName, string namespaceName)
@@ -334,26 +340,57 @@ namespace MinecraftServerMicroservice.Model
             }
         }
 
-        public async Task<string> StartServer(string serverName)
+        public async Task<OperationInfo> StartServer(string serverName)
         {
-            V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+            OperationInfo startInfo = new OperationInfo();
+            startInfo.serverName = serverName;
 
-            deployment.Spec.Replicas = 1;
+            try
+            {
+                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
 
-            await _client.ReplaceNamespacedDeploymentAsync(deployment, serverName, MC_SERVER_NAMESPACE);
+                deployment.Spec.Replicas = 1;
 
-            return $"Server '{serverName}' Started. Status: ...";
+                await _client.ReplaceNamespacedDeploymentAsync(deployment, serverName, MC_SERVER_NAMESPACE);
+
+                startInfo.deployment = "started";
+            }
+            catch (k8s.Autorest.HttpOperationException e)
+            {
+                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+                {
+                    startInfo.deployment = "notFound";
+                    System.Diagnostics.Debug.WriteLine($"PVC '{serverName}' not found.");
+                }
+            }
+
+            return startInfo;
         }
 
-        public async Task<string> StopServer(string serverName)
+        public async Task<OperationInfo> StopServer(string serverName)
         {
-            V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+            OperationInfo stopInfo = new OperationInfo();
+            stopInfo.serverName = serverName;
 
-            deployment.Spec.Replicas = 0;
+            try
+            {
+                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
 
-            await _client.ReplaceNamespacedDeploymentAsync(deployment, serverName, MC_SERVER_NAMESPACE);
+                deployment.Spec.Replicas = 0;
 
-            return $"Server '{serverName}' Stopped. Status: ...";
+                await _client.ReplaceNamespacedDeploymentAsync(deployment, serverName, MC_SERVER_NAMESPACE);
+
+                stopInfo.deployment = "stopped";
+            }
+            catch (k8s.Autorest.HttpOperationException e)
+            {
+                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+                {
+                    stopInfo.deployment = "notFound";
+                    System.Diagnostics.Debug.WriteLine($"PVC '{serverName}' not found.");
+                }
+            }
+            return stopInfo;
         }
 
         public async Task<string> PingServer(string serverName)
@@ -393,12 +430,26 @@ namespace MinecraftServerMicroservice.Model
         }
 
         // Example: /op mikyll98
-        public string SendCommand(string serverName, string command)
+        public async Task<string> SendCommand(string serverName, string command)
         {
+            try
+            {
+                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+            }
+            catch (k8s.Autorest.HttpOperationException e)
+            {
+                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
+                    return $"Server '{serverName}' not found.";
+                }
+            }
+
             var processStartInfo = new ProcessStartInfo()
             {
                 FileName = "kubectl",
                 Arguments = $"exec deployment/{serverName} -- mc-send-to-console {command}",
+                //Arguments = $"exec deployment/{serverName} -- rcon-cli {command}",
                 RedirectStandardOutput = true,
                 UseShellExecute = false
             };
@@ -414,6 +465,80 @@ namespace MinecraftServerMicroservice.Model
             process.WaitForExit();
 
             return commandOutput;
+        }
+
+        public async Task<bool> UpdateProperty(string serverName, string property, string newValue)
+        {
+            bool result = false;
+
+            try
+            {
+                V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
+            }
+            catch (k8s.Autorest.HttpOperationException e)
+            {
+                if (e.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase))
+                {
+                    result = false;
+                    System.Diagnostics.Debug.WriteLine($"Deployment '{serverName}' not found.");
+                }
+            }
+
+            // Allow only valid properties
+            if (property != "gamemode" /*&&*/)
+                return result;
+
+            // Remove content after newline
+            int newlineIndex = newValue.IndexOf('\n');
+            newValue = newlineIndex >= 0 ? newValue.Substring(0, newlineIndex) : newValue;
+
+            var processStartInfo = new ProcessStartInfo()
+            {
+                FileName = "kubectl",
+                Arguments = $"exec deployment/{serverName} -- cat server.properties | grep \"^${property}\"; N=$(cat server.properties | grep -n \"^{property}=\" | cut -f1 -d:); echo $N; sed -i \"${{N}}s/.*/{property}=creative/\" server.properties",
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+
+            var process = new Process()
+            {
+                StartInfo = processStartInfo
+            };
+
+            process.Start();
+            
+
+            var commandOutput = process.StandardOutput.ReadToEnd();
+            System.Diagnostics.Debug.WriteLine(commandOutput);
+
+            process.WaitForExit();
+
+            result = true;
+
+            return result;
+        }
+
+        /// <summary>
+        /// Method <c>GetServerList</c> retrieve the list of servers
+        /// created by the user associated with a given e-mail.
+        /// Useful to keep track of the current state of servers belonging
+        /// to a certain user.
+        /// </summary>
+        /// <param name="email">The e-mail of the user</param>
+        /// <returns>A list of <c>ServerStatus</c> each one containing the
+        /// server name and its current status.</returns>
+        public List<ServerInfo> GetServerList(string email)
+        {
+            List<ServerInfo> serverList = new List<ServerInfo>();
+
+            // Retrieve the server names from the DB (for the given email)
+
+            // Test
+            serverList.Add(new ServerInfo() { serverName = "server1", deployment = ServerStatus.running, connectedPlayers = 5, maxPlayers = 20 });
+            serverList.Add(new ServerInfo() { serverName = "server2", deployment = ServerStatus.terminated, connectedPlayers = 0, maxPlayers = 20 });
+            serverList.Add(new ServerInfo() { serverName = "server3", deployment = ServerStatus.waiting, connectedPlayers = 0, maxPlayers = 20 });
+            
+            return serverList;
         }
     }
 }
