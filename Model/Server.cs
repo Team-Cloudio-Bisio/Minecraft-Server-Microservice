@@ -1,5 +1,6 @@
-﻿using k8s.KubeConfigModels;
-using k8s.Models;
+﻿
+using System;
+using System.Collections.Generic;
 
 namespace MinecraftServerMicroservice.Model
 {
@@ -13,10 +14,13 @@ namespace MinecraftServerMicroservice.Model
 
         public Guid? settingsID { get; set; }
 
-        public ServerSettingsExtended settings { get; set; }
+        public ServerSettings settings { get; set; }
 
         public List<User> admin { get; set; }
 
-        public List<User> whitelist { get; set; }
+        public List<string> whitelist { get; set; }
+
     }
 }
+
+
