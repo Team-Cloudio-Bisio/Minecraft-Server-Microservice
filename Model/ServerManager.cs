@@ -1,5 +1,6 @@
 ﻿using k8s;
 using k8s.Models;
+using MinecraftServerMicroservice.Utils;
 using System;
 using System.Diagnostics;
 
@@ -12,8 +13,8 @@ namespace MinecraftServerMicroservice.Model
         public const string MC_SERVICE_SUFFIX = "-service";
         public const string MC_STORAGE_SUFFIX = "-volume";
 
-        private KubernetesClientConfiguration? _kubeConfig;
-        private Kubernetes? _client;
+        private readonly KubernetesClientConfiguration? _kubeConfig;
+        private readonly Kubernetes? _client;
 
         public ServerManager()
         {
@@ -26,23 +27,16 @@ namespace MinecraftServerMicroservice.Model
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error while initializing the ServerManager: {ex.Message}");
-                //Console.WriteLine($"Error while initializing the ServerManager: {ex.Message}");
             }
             System.Diagnostics.Debug.WriteLine("ServerManager Setup");
-            
-            // get a list of the current pods the user has access to?
+
         }
 
         public async Task<Server> CreateServer(Server server)
         {
-            System.Diagnostics.Debug.WriteLine("Test 1");
-
             string ipAddress = await FullCreateServer(server.serverName);
 
             server.ip = ipAddress;
-            System.Diagnostics.Debug.WriteLine($"Test 2: {ipAddress}");
-
-
 
             return server;
         }
@@ -70,6 +64,7 @@ namespace MinecraftServerMicroservice.Model
             string minecraftVersion = "",
             string serverOperators = "",
             string serverWorldURL = "",
+            bool serverEnableCommandBlocks = false,
             bool serverEnableStatus = true,
             string serverMOTD = "MC Server Powered by Azure & Kubernetes",
             string serverDifficulty = "easy",
@@ -83,6 +78,10 @@ namespace MinecraftServerMicroservice.Model
             if (_client == null)
                 return "Client not yet initialized";
 
+            // Check if the server exists
+            if (await CheckIfServerExist(serverName))
+                return $"Server named '{serverName}' already exists.";
+
             // Validate parameters
             List<V1EnvVar> envVariables = new List<V1EnvVar>();
             envVariables.Add(new V1EnvVar("EULA", "true"));
@@ -95,6 +94,8 @@ namespace MinecraftServerMicroservice.Model
 
             if (serverWorldURL.Length > 0)
                 envVariables.Add(new V1EnvVar("WORLD", serverWorldURL));
+
+            envVariables.Add(new V1EnvVar("ENABLE_COMMAND_BLOCK", serverEnableStatus.ToString().ToLower()));
 
             envVariables.Add(new V1EnvVar("ENABLE_STATUS", serverEnableStatus.ToString().ToLower()));
 
@@ -471,7 +472,7 @@ namespace MinecraftServerMicroservice.Model
             string command = "", commandOutput = "";
 
             // Test
-            command = "touch test.txt";
+            command = "echo ciao > test.txt";
             System.Diagnostics.Debug.WriteLine($"Command: {command}");
             commandOutput += ExecCommand(serverName, command);
             System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
@@ -557,7 +558,20 @@ namespace MinecraftServerMicroservice.Model
             return commandOutput;
         }
 
+        public async Task<string> GetWhitelist(string serverName)
+        {
+            // Check if the server exists
+            if (!(await CheckIfServerExist(serverName)))
+                return "not found";
 
+            // Test
+            var command = "cat whitelist.json";
+            System.Diagnostics.Debug.WriteLine($"Command: {command}");
+            var commandOutput = ExecCommand(serverName, command);
+            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
+
+            return commandOutput;
+        }
 
         // ================================================
         // EXTRAS

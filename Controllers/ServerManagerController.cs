@@ -1,6 +1,7 @@
 ﻿using IdentityModel.OidcClient;
 using Microsoft.AspNetCore.Mvc;
 using MinecraftServerMicroservice.Model;
+using MinecraftServerMicroservice.Utils;
 
 namespace MinecraftServerMicroservice.Controllers;
 
@@ -9,17 +10,24 @@ namespace MinecraftServerMicroservice.Controllers;
 public class ServerManagerController : ControllerBase
 {
     private readonly ServerManager _serverManager;
+    private readonly DBUtils _dbUtils;
 
     public ServerManagerController()
     {
         _serverManager = new ServerManager();
+        _dbUtils = new DBUtils();
     }
 
     [HttpPost("MinecraftServer", Name = "CreateServer")]
     public async Task<Server> CreateServer(Server server)
     {
-        // Non funziona
-        return await _serverManager.CreateServer(server);
+        Server createdServer = await _serverManager.CreateServer(server);
+        
+        // TEST: Push to DB
+        var res = _dbUtils.AddServer(createdServer);
+        System.Diagnostics.Debug.WriteLine($"Server add to DB: {res}");
+
+        return createdServer;
     }
 
     [HttpGet("createServer", Name = "FullCreateServer")]
@@ -43,6 +51,11 @@ public class ServerManagerController : ControllerBase
             result = StatusCode(200, deleteInfo.serverName);
         else
             result = StatusCode(401, deleteInfo);
+
+        // TEST: Delete from DB
+        var res = _dbUtils.RemoveServer(serverName);
+        System.Diagnostics.Debug.WriteLine($"Server delete from DB: {res}");
+
 
         return result;
     }
@@ -84,7 +97,7 @@ public class ServerManagerController : ControllerBase
 
         string output = await _serverManager.UpdateProperty(serverName, "gamemode", "creative");
         
-        if (output.ToLower().Contains("not found"))
+        if (output.ToLower().Contains("not found", StringComparison.OrdinalIgnoreCase))
             result = StatusCode(404, $"Server named '{serverName}' not found.");
         else if (output.ToLower().Contains("invalid property"))
             result = StatusCode(401, "Couldn't change gamemode");
@@ -100,7 +113,7 @@ public class ServerManagerController : ControllerBase
         IActionResult result;
 
         var output = await _serverManager.SendCommandInteractive(serverName, $"/difficulty {difficulty}");
-        if (!output.Contains("not found"))
+        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase))
             result = StatusCode(200, $"Difficulty set to {difficulty}");
         else
             result = StatusCode(401, "Couldn't change difficulty");
@@ -114,7 +127,7 @@ public class ServerManagerController : ControllerBase
         IActionResult result;
 
         var output = await _serverManager.SendCommandInteractive(serverName, command);
-        if (!output.Contains("not found")) 
+        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase)) 
             result = StatusCode(200, $"Command output: '{output}'");
         else
             result = StatusCode(401, $"Command failed. Error: '{output}'");
@@ -128,8 +141,22 @@ public class ServerManagerController : ControllerBase
         IActionResult result;
 
         var output = await _serverManager.UpdateProperty(serverName, property, command);
-        if (!output.Contains("not found"))
+        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase))
             result = StatusCode(200, $"Command output: '{output}'");
+        else
+            result = StatusCode(401, $"Command failed. Error: '{output}'");
+
+        return result;
+    }
+
+    [HttpGet("{serverName}/getWhitelist", Name = "GetWhitelist")]
+    public async Task<IActionResult> GetWhitelist(string serverName)
+    {
+        IActionResult result;
+
+        var output = await _serverManager.GetWhitelist(serverName);
+        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(200, $"{output}");
         else
             result = StatusCode(401, $"Command failed. Error: '{output}'");
 
