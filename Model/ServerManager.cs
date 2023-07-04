@@ -3,6 +3,7 @@ using k8s.Models;
 using MinecraftServerMicroservice.Utils;
 using System;
 using System.Diagnostics;
+using System.Drawing;
 
 namespace MinecraftServerMicroservice.Model
 {
@@ -61,19 +62,19 @@ namespace MinecraftServerMicroservice.Model
         /// <returns>The server's IP address.</returns>
         public async Task<string> FullCreateServer(
             string serverName,
-            string minecraftVersion = "",
-            string serverOperators = "",
-            string serverWorldURL = "",
-            bool serverEnableCommandBlocks = false,
-            bool serverEnableStatus = true,
-            string serverMOTD = "MC Server Powered by Azure & Kubernetes",
             string serverDifficulty = "easy",
             string serverGameMode = "survival",
-            int serverMaxPlayers = 20,
-            bool serverOnlineMode = true,
-            int serverPlayerIdleTimeout = 0,
+            bool serverEnableCommandBlocks = false,
+            bool serverEnableStatus = true,
             bool serverEnableWhitelist = false,
-            string serverWhitelist = "")
+            string serverMOTD = "MC Server Powered by Azure & Kubernetes",
+            bool serverOnlineMode = true,
+            string serverOperators = "",
+            int serverMaxPlayers = 20,
+            int serverPlayerIdleTimeout = 0,
+            string minecraftVersion = "",
+            string serverWhitelist = "",
+            string serverWorldURL = "")
         {
             if (_client == null)
                 return "Client not yet initialized";
@@ -95,7 +96,7 @@ namespace MinecraftServerMicroservice.Model
             if (serverWorldURL.Length > 0)
                 envVariables.Add(new V1EnvVar("WORLD", serverWorldURL));
 
-            envVariables.Add(new V1EnvVar("ENABLE_COMMAND_BLOCK", serverEnableStatus.ToString().ToLower()));
+            envVariables.Add(new V1EnvVar("ENABLE_COMMAND_BLOCK", serverEnableCommandBlocks.ToString().ToLower()));
 
             envVariables.Add(new V1EnvVar("ENABLE_STATUS", serverEnableStatus.ToString().ToLower()));
 
@@ -341,20 +342,7 @@ namespace MinecraftServerMicroservice.Model
             return deleteInfo;
         }
 
-        private async Task WaitForServiceReady(string serviceName, string namespaceName)
-        {
-            while (true)
-            {
-                var service = await _client.ReadNamespacedServiceAsync(serviceName, namespaceName);
-                if (service?.Status?.LoadBalancer?.Ingress != null &&
-                    service.Status.LoadBalancer.Ingress.Count > 0) // Ugly ass condition
-                {
-                    break;
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(5)); // Adjust the polling interval as needed
-            }
-        }
+        
 
         public async Task<OperationInfo> StartServer(string serverName)
         {
@@ -507,18 +495,31 @@ namespace MinecraftServerMicroservice.Model
             // Retrieve the server names from the DB (for the given email)
 
             // Test
-            serverList.Add(new ServerInfo() { serverName = "server1", deployment = ServerStatus.running, connectedPlayers = 5, maxPlayers = 20 });
-            serverList.Add(new ServerInfo() { serverName = "server2", deployment = ServerStatus.terminated, connectedPlayers = 0, maxPlayers = 20 });
-            serverList.Add(new ServerInfo() { serverName = "server3", deployment = ServerStatus.waiting, connectedPlayers = 0, maxPlayers = 20 });
+            serverList.Add(new ServerInfo() { serverName = "server1", deploymentStatus = ServerStatus.Running, connectedPlayers = 5, maxPlayers = 20 });
+            serverList.Add(new ServerInfo() { serverName = "server2", deploymentStatus = ServerStatus.Terminated, connectedPlayers = 0, maxPlayers = 20 });
+            serverList.Add(new ServerInfo() { serverName = "server3", deploymentStatus = ServerStatus.Waiting, connectedPlayers = 0, maxPlayers = 20 });
             
             return serverList;
         }
 
+        private async Task WaitForServiceReady(string serviceName, string namespaceName)
+        {
+            while (true)
+            {
+                var service = await _client.ReadNamespacedServiceAsync(serviceName, namespaceName);
+                if (service?.Status?.LoadBalancer?.Ingress != null &&
+                    service.Status.LoadBalancer.Ingress.Count > 0) // Ugly ass condition
+                {
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(5)); // Adjust the polling interval as needed
+            }
+        }
         private async Task<bool> CheckIfServerExist(string serverName)
         {
             bool result = false;
 
-            // Check if the server exists
             try
             {
                 V1Deployment deployment = await _client.ReadNamespacedDeploymentAsync(serverName, MC_SERVER_NAMESPACE);
@@ -534,7 +535,6 @@ namespace MinecraftServerMicroservice.Model
 
             return result;
         }
-
         private string ExecCommand(string serverName, string command)
         {
             var processStartInfo = new ProcessStartInfo()
@@ -556,6 +556,56 @@ namespace MinecraftServerMicroservice.Model
             process.WaitForExit();
 
             return commandOutput;
+        }
+
+        public async Task<List<ServerInfo>> GetAllServerInformation()
+        {
+            List<ServerInfo> infoList = new List<ServerInfo>();
+            V1DeploymentList deployments = _client.ListNamespacedDeployment(MC_SERVER_NAMESPACE);
+
+            foreach (var deployment in deployments.Items)
+            {
+                ServerStatus status = await GetServerContainerState(deployment.Name());
+
+                ServerInfo serverInfo = new ServerInfo()
+                {
+                    serverName = deployment.Name(),
+                    deploymentStatus = status,
+                    deploymentStatusString = Enum.GetName(typeof(ServerStatus), status),
+                    // list players
+                };
+                infoList.Add(serverInfo);
+                System.Diagnostics.Debug.WriteLine(serverInfo.ToJSONstring());
+            }
+
+            return infoList;
+        }
+
+        private async Task<ServerStatus> GetServerContainerState(string serverName)
+        {
+            // Check if the server exists
+            if (!(await CheckIfServerExist(serverName)))
+                return ServerStatus.NotFound;
+
+            V1PodList pods = _client.ListNamespacedPod(MC_SERVER_NAMESPACE, labelSelector: $"app={serverName}");
+            
+            try
+            {
+                V1ContainerState state = pods.Items[0].Status.ContainerStatuses[0].State;
+
+                if (state?.Running != null)
+                    return ServerStatus.Running;
+                else if (state?.Waiting != null)
+                    return ServerStatus.Waiting;
+                else if (state?.Terminated != null)
+                    return ServerStatus.Terminated;
+            }
+            catch (Exception e)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error while retrieving the state of server '{serverName}': {e.Message}");
+            }
+
+            return ServerStatus.NotFound;
         }
 
         public async Task<string> GetWhitelist(string serverName)

@@ -30,14 +30,6 @@ public class ServerManagerController : ControllerBase
         return createdServer;
     }
 
-    [HttpGet("createServer", Name = "FullCreateServer")]
-    public async Task<string> FullCreateServer(string server)
-    {
-        // check the server doesn't already exist(?)
-
-        return await _serverManager.FullCreateServer(server);
-    }
-
     [HttpDelete("MinecraftServer", Name = "DeleteServer")]
     public async Task<IActionResult> DeleteServer(string serverName)
     {
@@ -48,14 +40,13 @@ public class ServerManagerController : ControllerBase
         if (deleteInfo.deployment == "deleted" && 
             deleteInfo.service == "deleted" && 
             deleteInfo.storage == "deleted")
-            result = StatusCode(200, deleteInfo.serverName);
+            result = StatusCode(200, new Message { message = "OK", description = deleteInfo });
         else
-            result = StatusCode(401, deleteInfo);
+            result = StatusCode(401, new Message { message = "NO", description = deleteInfo });
 
         // TEST: Delete from DB
         var res = _dbUtils.RemoveServer(serverName);
         System.Diagnostics.Debug.WriteLine($"Server delete from DB: {res}");
-
 
         return result;
     }
@@ -68,9 +59,9 @@ public class ServerManagerController : ControllerBase
         OperationInfo startInfo = await _serverManager.StartServer(serverName);
 
         if (startInfo.deployment == "started")
-            result = StatusCode(200, startInfo.serverName);
+            result = StatusCode(200, new Message { message = "OK", description = startInfo });
         else
-            result = StatusCode(401, startInfo);
+            result = StatusCode(401, new Message { message = "NO", description = startInfo });
 
         return result;
     }
@@ -83,9 +74,9 @@ public class ServerManagerController : ControllerBase
         OperationInfo stopInfo = await _serverManager.StopServer(serverName);
 
         if (stopInfo.deployment == "stopped")
-            result = StatusCode(200, stopInfo.serverName);
+            result = StatusCode(200, new Message { message = "OK", description = stopInfo });
         else
-            result = StatusCode(401, stopInfo);
+            result = StatusCode(401, new Message { message = "NO", description = stopInfo });
 
         return result;
     }
@@ -95,14 +86,14 @@ public class ServerManagerController : ControllerBase
     {
         IActionResult result;
 
-        string output = await _serverManager.UpdateProperty(serverName, "gamemode", "creative");
+        string output = await _serverManager.UpdateProperty(serverName, "gamemode", Enum.GetName(typeof(Gamemode), gamemode));
         
-        if (output.ToLower().Contains("not found", StringComparison.OrdinalIgnoreCase))
-            result = StatusCode(404, $"Server named '{serverName}' not found.");
-        else if (output.ToLower().Contains("invalid property"))
-            result = StatusCode(401, "Couldn't change gamemode");
+        if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(404, new Message { message = "NO", description = $"Server named '{serverName}' not found." } );
+        else if (output.Contains("invalid property", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(401, new Message { message = "NO", description = $"Gamemode of server '{serverName}' couldn't be changed to '{Enum.GetName(typeof(Gamemode), gamemode)}'. Error: {output}"});
         else
-            result = StatusCode(200, output);
+            result = StatusCode(200, new Message { message = "OK", description = $"Gamemode of server '{serverName}' changed to '{Enum.GetName(typeof(Gamemode), gamemode)}'." });
 
         return result;
     }
@@ -113,12 +104,60 @@ public class ServerManagerController : ControllerBase
         IActionResult result;
 
         var output = await _serverManager.SendCommandInteractive(serverName, $"/difficulty {difficulty}");
-        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase))
-            result = StatusCode(200, $"Difficulty set to {difficulty}");
+        
+        if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(404, new Message { message = "NO", description = $"Server named '{serverName}' not found." });
+        else if (output.StartsWith("Unknown or incomplete command", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(401, new Message { message = "NO", description = $"Difficulty of server '{serverName}' couldn't be changed to '{Enum.GetName(typeof(Difficulty), difficulty)}'. Error: {output}." });
         else
-            result = StatusCode(401, "Couldn't change difficulty");
+            result = StatusCode(200, new Message { message = "OK", description = $"Difficulty of server '{serverName}' changed to '{Enum.GetName(typeof(Difficulty), difficulty)}'." });
 
         return result;
+    }
+
+    // EXTRA ====================================================
+
+    // test
+    [HttpGet("getServer", Name = "GetServer")]
+    public async Task<List<ServerInfo>> GetServer()
+    {
+        return await _serverManager.GetAllServerInformation();
+    }
+
+    [HttpGet("createServer", Name = "FullCreateServer")]
+    public async Task<string> FullCreateServer(
+        string serverName,
+        string serverDifficulty = "easy",
+        string serverGameMode = "survival",
+        bool serverEnableCommandBlocks = false,
+        bool serverEnableStatus = true,
+        bool serverEnableWhitelist = false,
+        string serverMOTD = "MC Server Powered by Azure & Kubernetes",
+        bool serverOnlineMode = true,
+        string serverOperators = "",
+        int serverMaxPlayers = 20,
+        int serverPlayerIdleTimeout = 0,
+        string minecraftVersion = "",
+        string serverWhitelist = "",
+        string serverWorldURL = "")
+    {
+        // check the server doesn't already exist(?)
+
+        return await _serverManager.FullCreateServer(
+            serverName: serverName,
+            serverDifficulty: serverDifficulty,
+            serverGameMode: serverGameMode,
+            serverEnableCommandBlocks: serverEnableCommandBlocks,
+            serverEnableStatus: serverEnableStatus,
+            serverEnableWhitelist: serverEnableWhitelist,
+            serverMOTD: serverMOTD,
+            serverOnlineMode: serverOnlineMode,
+            serverOperators: serverOperators,
+            serverMaxPlayers: serverMaxPlayers,
+            serverPlayerIdleTimeout: serverPlayerIdleTimeout,
+            minecraftVersion: minecraftVersion,
+            serverWhitelist: serverWhitelist,
+            serverWorldURL: serverWorldURL);
     }
 
     [HttpGet("{serverName}/sendCommand", Name = "SendCommand")]
@@ -127,24 +166,27 @@ public class ServerManagerController : ControllerBase
         IActionResult result;
 
         var output = await _serverManager.SendCommandInteractive(serverName, command);
-        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase)) 
-            result = StatusCode(200, $"Command output: '{output}'");
+        if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(200, new Message { message = "NO", description = $"Server named '{serverName}' not found." });
         else
-            result = StatusCode(401, $"Command failed. Error: '{output}'");
+            result = StatusCode(401, new Message { message = "OK", description = $"Command '{command}' to '{serverName}' failed. Output: {output}." });
 
         return result;
     }
 
     [HttpGet("{serverName}/updateProperty", Name = "UpdateProperty")]
-    public async Task<IActionResult> UpdateProperty(string serverName, string property, string command)
+    public async Task<IActionResult> UpdateProperty(string serverName, string property, string newValue)
     {
         IActionResult result;
 
-        var output = await _serverManager.UpdateProperty(serverName, property, command);
-        if (!output.Contains("not found", StringComparison.OrdinalIgnoreCase))
-            result = StatusCode(200, $"Command output: '{output}'");
+        var output = await _serverManager.UpdateProperty(serverName, property, newValue);
+        if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(404, new Message { message = "NO", description = $"Server named '{serverName}' not found." });
+        else if (output.Contains("invalid property", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(401, new Message { message = "NO", description = $"Property '{property}' is invalid." });
         else
-            result = StatusCode(401, $"Command failed. Error: '{output}'");
+            result = StatusCode(200, new Message { message = "OK", description = $"Property '{property}' of server '{serverName}' changed to '{newValue}'." });
+
 
         return result;
     }

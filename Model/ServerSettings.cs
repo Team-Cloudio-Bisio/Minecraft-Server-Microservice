@@ -4,18 +4,18 @@ namespace MinecraftServerMicroservice.Model
 {
     public enum Difficulty
     {
-        peaceful,
-        easy,
-        normal,
-        hard
+        peaceful = 0,
+        easy = 1,
+        normal = 2,
+        hard = 3
     }
 
     public enum Gamemode
     {
-        survival,
-        creative,
-        adventure,
-        spectator
+        survival = 0,
+        creative = 1,
+        adventure = 2,
+        spectator = 3
     }
 
     public class ServerSettings
