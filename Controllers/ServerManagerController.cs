@@ -86,7 +86,18 @@ public class ServerManagerController : ControllerBase
     {
         IActionResult result;
 
-        string output = await _serverManager.UpdateProperty(serverName, "gamemode", Enum.GetName(typeof(Gamemode), gamemode));
+        // Temp: that changes the gamemode of connected players
+        string output = await _serverManager.SendCommandInteractive(serverName, $"/gamemode {gamemode} @a");
+
+        if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(404, new Message { message = "NO", description = $"Server named '{serverName}' not found." });
+        else if (output.StartsWith("Unknown or incomplete command", StringComparison.OrdinalIgnoreCase))
+            result = StatusCode(401, new Message { message = "NO", description = $"Gamemode of server '{serverName}' couldn't be changed to '{Enum.GetName(typeof(Gamemode), gamemode)}'. Error: {output}." });
+        else
+            result = StatusCode(200, new Message { message = "OK", description = $"Gamemode of server '{serverName}' changed to '{Enum.GetName(typeof(Gamemode), gamemode)}'." });
+
+        /*
+        string output = await _serverManager.UpdateServerProperty(serverName, "gamemode", Enum.GetName(typeof(Gamemode), gamemode));
         
         if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
             result = StatusCode(404, new Message { message = "NO", description = $"Server named '{serverName}' not found." } );
@@ -94,6 +105,7 @@ public class ServerManagerController : ControllerBase
             result = StatusCode(401, new Message { message = "NO", description = $"Gamemode of server '{serverName}' couldn't be changed to '{Enum.GetName(typeof(Gamemode), gamemode)}'. Error: {output}"});
         else
             result = StatusCode(200, new Message { message = "OK", description = $"Gamemode of server '{serverName}' changed to '{Enum.GetName(typeof(Gamemode), gamemode)}'." });
+        */
 
         return result;
     }
@@ -174,12 +186,12 @@ public class ServerManagerController : ControllerBase
         return result;
     }
 
-    [HttpGet("{serverName}/updateProperty", Name = "UpdateProperty")]
-    public async Task<IActionResult> UpdateProperty(string serverName, string property, string newValue)
+    [HttpGet("{serverName}/updateServerProperty", Name = "UpdateServerProperty")]
+    public async Task<IActionResult> UpdateServerProperty(string serverName, string property, string newValue)
     {
         IActionResult result;
 
-        var output = await _serverManager.UpdateProperty(serverName, property, newValue);
+        var output = await _serverManager.UpdateServerProperty(serverName, property, newValue);
         if (output.Contains("not found", StringComparison.OrdinalIgnoreCase))
             result = StatusCode(404, new Message { message = "NO", description = $"Server named '{serverName}' not found." });
         else if (output.Contains("invalid property", StringComparison.OrdinalIgnoreCase))

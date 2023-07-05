@@ -10,6 +10,7 @@ namespace MinecraftServerMicroservice.Model
     public class ServerManager
     {
         public const string MC_SERVER_NAMESPACE = "minecraft-servers";
+        public const string MC_CONFIG = "config-scripts";
 
         public const string MC_SERVICE_SUFFIX = "-service";
         public const string MC_STORAGE_SUFFIX = "-volume";
@@ -147,7 +148,7 @@ namespace MinecraftServerMicroservice.Model
                 }
             };
 
-            // Configure Deployment (Workload resource containing the server docker image)
+            // Configure Deployment (Workload resource containing the container that runs the Minecraft server)
             V1Deployment deployment = new V1Deployment()
             {
                 ApiVersion = $"{V1Deployment.KubeGroup}/{V1Deployment.KubeApiVersion}",
@@ -182,11 +183,12 @@ namespace MinecraftServerMicroservice.Model
                         {
                             Containers = new List<V1Container>()
                             {
+                                // Minecraft server container
                                 new V1Container()
                                 {
                                     Name = $"{serverName}-container",
-                                    Image = "itzg/minecraft-server:latest",
-                                    Env = envVariables,
+                                    Image = "itzg/minecraft-server:latest", // Minecraft server Docker image
+                                    Env = envVariables, // Environment variables used to configure the server creation
                                     ImagePullPolicy = "Always",
                                     Ports = new List<V1ContainerPort>()
                                     {
@@ -230,11 +232,17 @@ namespace MinecraftServerMicroservice.Model
                                             Name = $"{serverName}-data",
                                             MountPath = "/data",
                                         },
+                                        new V1VolumeMount
+                                        {
+                                            Name = $"{serverName}-scripts",
+                                            MountPath = "/data/scripts",
+                                        },
                                     },
                                 },
                             },
                             Volumes = new List<V1Volume>()
                             {
+                                // Volume to make Minecraft server data persistent (world data, settings, etc.) when the container is stopped and restarted.
                                 new V1Volume()
                                 {
                                     Name = $"{serverName}-data",
@@ -243,13 +251,22 @@ namespace MinecraftServerMicroservice.Model
                                         ClaimName = serverName + MC_STORAGE_SUFFIX
                                     },
                                 },
+                                // Volume used to load utility scripts (ConfigMap)
+                                new V1Volume()
+                                {
+                                    Name = $"{serverName}-scripts",
+                                    ConfigMap = new V1ConfigMapVolumeSource()
+                                    {
+                                        Name = MC_CONFIG
+                                    }
+                                },
                             },
                         }
                     },
                 }
             };
 
-            // Configure Service to make the Server reachable
+            // Configure Service to make the Server reachable from outside the Kubernetes cluster
             V1Service service = new V1Service()
             {
                 ApiVersion = $"{V1Service.KubeGroup}/{V1Service.KubeApiVersion}",
@@ -441,13 +458,12 @@ namespace MinecraftServerMicroservice.Model
 
         /// <summary>
         /// Method <c>UpdateProperty</c> changes the value of a property in setting.properties file.
-        /// <b>NB: currently doesn't work.</b>
         /// </summary>
         /// <param name="serverName"></param>
         /// <param name="property"></param>
         /// <param name="newValue"></param>
         /// <returns>The command output or an error.</returns>
-        public async Task<string> UpdateProperty(string serverName, string property, string newValue)
+        public async Task<string> UpdateServerProperty(string serverName, string property, string newValue)
         {
             // Check if the server exists
             if (!(await CheckIfServerExist(serverName)))
@@ -457,23 +473,8 @@ namespace MinecraftServerMicroservice.Model
             if (property != "gamemode")
                 return "Invalid property";
 
-            string command = "", commandOutput = "";
-
-            // Test
-            command = "echo ciao > test.txt";
-            System.Diagnostics.Debug.WriteLine($"Command: {command}");
-            commandOutput += ExecCommand(serverName, command);
-            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
-
-            command = $"sed -i 's/^{property}=.*/{property}={newValue}/' server.properties";
-            System.Diagnostics.Debug.WriteLine($"Command: kubectl exec --namespace={MC_SERVER_NAMESPACE} deployment/{serverName} -- {command}");
-            commandOutput += ExecCommand(serverName, command);
-            System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
-
-            // Test: print content of properties
-            command = "cat server.properties";
-            System.Diagnostics.Debug.WriteLine($"Command: {command}");
-            commandOutput += ExecCommand(serverName, command);
+            string command = $"/bin/bash update-server-property.sh {property} {newValue}";
+            string commandOutput = ExecCommand(serverName, command);
             System.Diagnostics.Debug.WriteLine($"Output: {commandOutput}");
 
             return commandOutput;
@@ -570,6 +571,7 @@ namespace MinecraftServerMicroservice.Model
                 ServerInfo serverInfo = new ServerInfo()
                 {
                     serverName = deployment.Name(),
+                    ready = deployment.Status.Replicas == 1,
                     deploymentStatus = status,
                     deploymentStatusString = Enum.GetName(typeof(ServerStatus), status),
                     // list players
@@ -659,5 +661,12 @@ namespace MinecraftServerMicroservice.Model
             var serverInfo = $"External IP: {extIP}\nHostname: {hostname}";
             return serverInfo;
         }
+
+
+        // Open shell to pod:
+        // kubectl exec --stdin --tty --namespace=minecraft-servers deployment/test-mc -- /bin/bash
+
+        // Continuously print logs to output (add -n +1 to print from start):
+        // kubectl exec --namespace=minecraft-servers deployment/test-mc -- tail -f logs/latest.log
     }
 }

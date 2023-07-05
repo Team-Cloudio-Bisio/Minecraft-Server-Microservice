@@ -14,6 +14,7 @@ namespace MinecraftServerMicroservice.Model
     {
         public string serverName { get; set; }
 
+        public bool ready { get; set; } = false;
         public ServerStatus deploymentStatus { get; set; }
         public string deploymentStatusString { get; set; }
         public int connectedPlayers { get; set; } = -1;
